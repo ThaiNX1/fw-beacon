@@ -349,9 +349,9 @@ static uint16_t cfg_cccd[2] = {0, 0};
                      cccd_notifications_enabled = notify_en; // (đơn giản hoá) trạng thái chung
                      log_info("config_wifi: CCCD value: 0x%04x (notifications %s)",
                               cccd_value, notify_en ? "enabled" : "disabled");
-                     if (i == 1 && (notify_en || indicate_en)) {
+                     if (i == 1 && notify_en) {
                         const char* probe = "BD02: hello from ESP32";
-                        BLE_sendOnBD02((const uint8_t*)probe, (uint16_t)strlen(probe));
+                        // BLE_sendOnBD02((const uint8_t*)probe, (uint16_t)strlen(probe));
                      }
                  }
                  esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, ESP_GATT_OK, NULL);
@@ -416,7 +416,7 @@ static uint16_t cfg_cccd[2] = {0, 0};
          esp_ble_gatts_add_char(gl_profile_tab[PROFILE_CONFIG_WIFI_APP_ID].service_handle,
                                 &gl_profile_tab[PROFILE_CONFIG_WIFI_APP_ID].charInsts[1].char_uuid,
                                 ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
-                                ESP_GATT_CHAR_PROP_BIT_READ | ESP_GATT_CHAR_PROP_BIT_WRITE_NR | ESP_GATT_CHAR_PROP_BIT_NOTIFY | ESP_GATT_CHAR_PROP_BIT_INDICATE,
+                                ESP_GATT_CHAR_PROP_BIT_READ | ESP_GATT_CHAR_PROP_BIT_WRITE_NR | ESP_GATT_CHAR_PROP_BIT_NOTIFY, // chỉ notify
                                 &com_char_val,
                                 &configAttrControl);
          break;
@@ -1067,12 +1067,11 @@ static void BLE_sendOnBD02(const uint8_t *data, uint16_t len) {
     if (!ble_inited || !s_bleConfigConnected) return;
 
     uint16_t c = cfg_cccd[1]; // BD02
-    if ((c & 0x0001) == 0 && (c & 0x0002) == 0) {
-        log_warning("BD02: client not subscribed (CCCD=0x%04x), skip send", c);
+    if ((c & 0x0001) == 0) { // chỉ kiểm tra notify
+        log_warning("BD02: client not subscribed notify (CCCD=0x%04x), skip send", c);
         return;
     }
 
-    bool need_confirm = (c & 0x0002) != 0; // Indicate?
     uint16_t h = gl_profile_tab[PROFILE_CONFIG_WIFI_APP_ID].charInsts[1].char_handle; // BD02
 
     esp_err_t err = esp_ble_gatts_send_indicate(
@@ -1081,14 +1080,11 @@ static void BLE_sendOnBD02(const uint8_t *data, uint16_t len) {
         h,
         len,
         (uint8_t*)data,
-        need_confirm
+        false // chỉ notify, không indicate
     );
     if (err != ESP_OK) {
-        log_error("send_indicate BD02 err=%d %s", err, esp_err_to_name(err));
+        log_error("send_notify BD02 err=%d %s", err, esp_err_to_name(err));
     } else {
-        log_info("BD02: sent %d bytes", len);
+        log_info("BD02: sent %d bytes (notify)", len);
     }
 }
- 
- /***********************************************/
- 
